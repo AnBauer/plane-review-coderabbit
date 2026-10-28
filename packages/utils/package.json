@@ -43,7 +43,8 @@
     "sanitize-html": "catalog:",
     "tailwind-merge": "catalog:",
     "unified": "catalog:",
-    "uuid": "catalog:"
+    "uuid": "catalog:",
+    "zod": "catalog:"
   },
   "devDependencies": {
     "@plane/typescript-config": "workspace:*",

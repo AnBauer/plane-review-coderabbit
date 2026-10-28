@@ -6,14 +6,24 @@
 
 import type { ReactNode } from "react";
 import { act, renderHook, waitFor } from "@testing-library/react";
-import { MemoryRouter, useLocation } from "react-router";
-import { describe, expect, it } from "vitest";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router";
+import { beforeEach, describe, expect, it } from "vitest";
 // local imports
-import { useModuleStatusFilter } from "./use-module-status-filter";
+import { moduleStatusFiltersStorageKey, useModuleStatusFilter } from "./use-module-status-filter";
+
+const STORAGE_KEY = moduleStatusFiltersStorageKey("p1");
+
+const readSavedStatuses = () => JSON.parse(window.localStorage.getItem(STORAGE_KEY) ?? "null");
 
 const createWrapper = (initialEntry: string) =>
   function Wrapper({ children }: { children: ReactNode }) {
-    return <MemoryRouter initialEntries={[initialEntry]}>{children}</MemoryRouter>;
+    return (
+      <MemoryRouter initialEntries={[initialEntry]}>
+        <Routes>
+          <Route path="/:workspaceSlug/projects/:projectId/modules" element={children} />
+        </Routes>
+      </MemoryRouter>
+    );
   };
 
 const renderFilter = (initialEntry: string, initialStatuses?: string) =>
@@ -26,6 +36,10 @@ const renderFilter = (initialEntry: string, initialStatuses?: string) =>
   );
 
 describe("useModuleStatusFilter", () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+  });
+
   it("reads the statuses from the URL", () => {
     const { result } = renderFilter("/ws/projects/p1/modules?status=planned,paused");
 
@@ -54,5 +68,29 @@ describe("useModuleStatusFilter", () => {
     const { result } = renderFilter("/ws/projects/p1/modules", "completed");
 
     await waitFor(() => expect(result.current.location.search).toContain("status=completed"));
+  });
+
+  it("restores the saved statuses and keeps other params", async () => {
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(["paused"]));
+    const { result } = renderFilter("/ws/projects/p1/modules?view=1");
+
+    await waitFor(() => expect(result.current.location.search).toBe("?view=1&status=paused"));
+  });
+
+  it("prefers the URL and saves it", async () => {
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(["paused"]));
+    const { result } = renderFilter("/ws/projects/p1/modules?status=planned");
+
+    expect(result.current.filter.activeStatuses).toEqual(["planned"]);
+    await waitFor(() => expect(readSavedStatuses()).toEqual(["planned"]));
+    expect(result.current.location.search).toBe("?status=planned");
+  });
+
+  it("updates the URL and the saved statuses when switching", async () => {
+    const { result } = renderFilter("/ws/projects/p1/modules");
+
+    act(() => result.current.filter.switchStatus("completed"));
+    await waitFor(() => expect(result.current.location.search).toContain("status=completed"));
+    expect(readSavedStatuses()).toEqual(["completed"]);
   });
 });

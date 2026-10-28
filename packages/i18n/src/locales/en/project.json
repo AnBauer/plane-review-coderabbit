@@ -96,7 +96,9 @@
           "title": "Error!"
         },
         "error": {
-          "already_exists": "You already have a cycle on the given dates, if you want to create a draft cycle, you can do that by removing both the dates."
+          "already_exists": "You already have a cycle on the given dates, if you want to create a draft cycle, you can do that by removing both the dates.",
+          "end_before_start": "The end date cannot be before the start date.",
+          "both_dates_required": "Set both a start and an end date, or remove both."
         }
       }
     },

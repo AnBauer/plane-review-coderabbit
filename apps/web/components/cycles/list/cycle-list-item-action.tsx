@@ -30,12 +30,12 @@ import { DateRangeSelect } from "@plane/blocks/property-select";
 import { getDate, getFileURL, generateQueryParams } from "@plane/utils";
 // components
 import { ButtonAvatars } from "@/components/dropdowns/member/avatar";
-import { MergedDateDisplay } from "@/components/dropdowns/merged-date";
 // hooks
 import { useCycle } from "@/hooks/store/use-cycle";
 import { useMember } from "@/hooks/store/use-member";
 import { useUserPermissions, useUserProfile } from "@/hooks/store/user";
 import { useAppRouter } from "@/hooks/use-app-router";
+import { useCycleDateUpdate } from "@/hooks/use-cycle-date-update";
 import { usePlatformOS } from "@/hooks/use-platform-os";
 import { useTimeZoneConverter } from "@/hooks/use-timezone-converter";
 // local imports
@@ -73,6 +73,7 @@ export const CycleListItemAction = observer(function CycleListItemAction(props: 
   const pathname = usePathname();
   // store hooks
   const { addCycleToFavorites, removeCycleFromFavorites } = useCycle();
+  const handleDateChange = useCycleDateUpdate(workspaceSlug, projectId, cycleId);
   const { allowPermissions } = useUserPermissions();
   const { data: userProfile } = useUserProfile();
 
@@ -108,6 +109,9 @@ export const CycleListItemAction = observer(function CycleListItemAction(props: 
     workspaceSlug,
     projectId
   );
+
+  // completed and archived cycles keep their dates
+  const canEditDates = isEditingAllowed && cycleStatus !== "completed" && !cycleDetails.archived_at;
 
   // handlers
   const handleAddToFavorites = (e: MouseEvent<HTMLButtonElement>) => {
@@ -211,57 +215,45 @@ export const CycleListItemAction = observer(function CycleListItemAction(props: 
           <span>{t("project_cycles.transfer_work_items", { count: transferableIssuesCount })}</span>
         </div>
       )}
-      {isActive ? (
-        <>
-          <div className="flex gap-2">
-            {/* Duration */}
-            <Tooltip
-              label={`${t("project_cycles.in_your_timezone")}: ${renderFormattedDateInUserTimezone(
-                cycleDetails.start_date ?? ""
-              )} → ${renderFormattedDateInUserTimezone(cycleDetails.end_date ?? "")}`}
-              layout="stacked"
-              disabled={!isProjectTimeZoneDifferent()}
-            >
-              <div className="flex items-center gap-1 text-11 font-medium text-tertiary">
-                <CalendarOutline className="my-auto h-3 w-3 flex-shrink-0" />
-                <MergedDateDisplay startDate={cycleDetails.start_date} endDate={cycleDetails.end_date} />
-              </div>
-            </Tooltip>
-            {projectUTCOffset && (
-              <span className="cursor-default rounded-md bg-layer-1 px-2 py-1 text-11 text-tertiary">
-                {projectUTCOffset}
-              </span>
-            )}
-            {/* created by */}
-            {createdByDetails && <ButtonAvatars showTooltip={false} userIds={createdByDetails?.id} />}
-          </div>
-        </>
-      ) : (
-        cycleDetails.start_date && (
-          <>
-            <DateRangeSelect
-              variant="select-ghost-md"
-              className="flex h-6 w-full cursor-auto items-center gap-1.5 rounded-sm p-0 text-11 text-tertiary [&>div]:hover:bg-transparent"
-              minDate={new Date()}
-              value={{
-                from: getDate(cycleDetails.start_date) ?? null,
-                to: getDate(cycleDetails.end_date) ?? null,
-              }}
-              onChange={() => {}}
-              placeholder={`${t("project_cycles.start_date")} - ${t("project_cycles.end_date")}`}
-              showTooltip={isProjectTimeZoneDifferent()}
-              tooltipHeading={t("project_cycles.in_your_timezone")}
-              tooltipContent={`${renderFormattedDateInUserTimezone(
-                cycleDetails.start_date ?? ""
-              )} → ${renderFormattedDateInUserTimezone(cycleDetails.end_date ?? "")}`}
-              mergeDates
-              disabled
-              weekStartsOn={userProfile?.start_of_the_week}
-              icon={<CalendarOutline />}
-            />
-          </>
-        )
+      {(isActive || cycleDetails.start_date || canEditDates) && (
+        // keep clicks on the picker from opening the cycle the row links to
+        // oxlint-disable-next-line jsx_a11y/click-events-have-key-events oxlint-disable-next-line jsx_a11y/no-static-element-interactions
+        <div
+          className="flex items-center gap-2"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+          }}
+        >
+          <DateRangeSelect
+            variant="select-ghost-md"
+            className={`flex h-6 w-full items-center gap-1.5 rounded-sm p-0 text-11 text-tertiary ${canEditDates ? "" : "cursor-auto [&>div]:hover:bg-transparent"}`}
+            minDate={new Date()}
+            value={{
+              from: getDate(cycleDetails.start_date) ?? null,
+              to: getDate(cycleDetails.end_date) ?? null,
+            }}
+            onChange={(range) => void handleDateChange(range)}
+            placeholder={`${t("project_cycles.start_date")} - ${t("project_cycles.end_date")}`}
+            showTooltip={isProjectTimeZoneDifferent() && !!cycleDetails.start_date && !!cycleDetails.end_date}
+            tooltipHeading={t("project_cycles.in_your_timezone")}
+            tooltipContent={`${renderFormattedDateInUserTimezone(
+              cycleDetails.start_date ?? ""
+            )} → ${renderFormattedDateInUserTimezone(cycleDetails.end_date ?? "")}`}
+            mergeDates
+            disabled={!canEditDates}
+            weekStartsOn={userProfile?.start_of_the_week}
+            icon={<CalendarOutline />}
+          />
+          {isActive && projectUTCOffset && (
+            <span className="cursor-default rounded-md bg-layer-1 px-2 py-1 text-11 text-tertiary">
+              {projectUTCOffset}
+            </span>
+          )}
+        </div>
       )}
+      {/* created by */}
+      {isActive && createdByDetails && <ButtonAvatars showTooltip={false} userIds={createdByDetails?.id} />}
       {/* created by */}
       {createdByDetails && !isActive && <ButtonAvatars showTooltip={false} userIds={createdByDetails?.id} />}
       {!isActive && (

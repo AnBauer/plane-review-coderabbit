@@ -130,6 +130,8 @@ from .issue.base import (
 
 from .issue.activity import IssueActivityEndpoint
 
+from .issue.move import IssueMoveEndpoint
+
 from .issue.archive import IssueArchiveViewSet, BulkArchiveIssuesEndpoint
 
 from .issue.attachment import (

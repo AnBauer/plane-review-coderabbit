@@ -53,7 +53,7 @@ export const useLocalStorage = <T,>(key: string, initialValue: T) => {
   useEffect(() => {
     window.addEventListener(`local-storage:${key}`, reHydrate);
     return () => {
-      window.removeEventListener(`local-storage:${key}`, reHydrate);
+      window.addEventListener(`local-storage:${key}`, reHydrate);
     };
   }, [key, reHydrate]);
 

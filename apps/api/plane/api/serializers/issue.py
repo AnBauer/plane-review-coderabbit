@@ -348,6 +348,48 @@ class IssueLiteSerializer(BaseSerializer):
         read_only_fields = fields
 
 
+class IssueBulkUpdatePropertiesSerializer(serializers.Serializer):
+    """Properties that can be changed on many work items at once."""
+
+    state_id = serializers.UUIDField(required=False)
+    priority = serializers.ChoiceField(choices=Issue.PRIORITY_CHOICES, required=False)
+    assignee_ids = serializers.ListField(child=serializers.UUIDField(), required=False)
+    label_ids = serializers.ListField(child=serializers.UUIDField(), required=False)
+
+    def to_internal_value(self, data):
+        unknown = set(data) - set(self.fields) if isinstance(data, dict) else set()
+        if unknown:
+            raise serializers.ValidationError({key: "This property cannot be bulk updated." for key in sorted(unknown)})
+        return super().to_internal_value(data)
+
+    def validate(self, data):
+        if not data:
+            raise serializers.ValidationError("At least one property is required.")
+        return data
+
+
+class IssueBulkUpdateSerializer(serializers.Serializer):
+    """
+    Request body of the work item bulk update endpoint.
+
+    Validates the shape only; project scoped checks (state, assignees, labels)
+    are done per work item by ``IssueSerializer``.
+    """
+
+    MAX_WORK_ITEMS = 100
+
+    work_item_ids = serializers.ListField(
+        child=serializers.UUIDField(),
+        allow_empty=False,
+        max_length=MAX_WORK_ITEMS,
+    )
+    properties = IssueBulkUpdatePropertiesSerializer()
+
+    def validate_work_item_ids(self, value):
+        # Drop duplicates, keep the order the caller sent
+        return list(dict.fromkeys(value))
+
+
 class LabelCreateUpdateSerializer(BaseSerializer):
     """
     Serializer for creating and updating work item labels.

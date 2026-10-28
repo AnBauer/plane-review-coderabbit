@@ -19,6 +19,7 @@ from .issue import (
     WorkspaceIssueAPIEndpoint,
     IssueListCreateAPIEndpoint,
     IssueDetailAPIEndpoint,
+    IssueBulkUpdateAPIEndpoint,
     LabelListCreateAPIEndpoint,
     LabelDetailAPIEndpoint,
     IssueLinkListCreateAPIEndpoint,

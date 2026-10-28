@@ -10,7 +10,7 @@ import re
 # Django imports
 from django.core.serializers.json import DjangoJSONEncoder
 from django.http import HttpResponseRedirect
-from django.db import IntegrityError
+from django.db import IntegrityError, transaction
 from django.db.models import (
     Case,
     CharField,
@@ -50,6 +50,7 @@ from plane.api.serializers import (
     IssueRelationResponseSerializer,
     IssueRelationSerializer,
     IssueSerializer,
+    IssueBulkUpdateSerializer,
     LabelSerializer,
     IssueAttachmentUploadSerializer,
     IssueSearchSerializer,
@@ -877,6 +878,136 @@ class IssueDetailAPIEndpoint(BaseAPIView):
             epoch=int(timezone.now().timestamp()),
         )
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class IssueBulkUpdateAPIEndpoint(BaseAPIView):
+    """Bulk update endpoint for work items of a project"""
+
+    model = Issue
+    webhook_event = "issue"
+    serializer_class = IssueBulkUpdateSerializer
+
+    # Bulk property name -> IssueSerializer field name
+    PROPERTY_FIELDS = {
+        "state_id": "state",
+        "priority": "priority",
+        "assignee_ids": "assignees",
+        "label_ids": "labels",
+    }
+
+    @work_item_docs(
+        operation_id="bulk_update_work_items",
+        summary="Bulk update work items",
+        description="Update the same properties on up to 100 work items of a project in one call. Only the given properties are changed; assignee_ids and label_ids replace the current lists. The call is all or nothing.",  # noqa: E501
+        parameters=[
+            PROJECT_ID_PARAMETER,
+        ],
+        request=OpenApiRequest(request=IssueBulkUpdateSerializer),
+        responses={
+            200: OpenApiResponse(
+                description="Work items updated successfully",
+                response=IssueSerializer(many=True),
+            ),
+            400: INVALID_REQUEST_RESPONSE,
+            403: FORBIDDEN_RESPONSE,
+            404: WORK_ITEM_NOT_FOUND_RESPONSE,
+        },
+    )
+    def post(self, request, slug, project_id):
+        """Bulk update work items
+
+        Update the same properties on up to 100 work items of a project in one call.
+        Nothing is changed if any work item is missing or any value is invalid.
+        """
+        if not ProjectMember.objects.filter(
+            workspace__slug=slug,
+            project_id=project_id,
+            member=request.user,
+            role__in=[ROLE.ADMIN.value, ROLE.MEMBER.value],
+        ).exists():
+            return Response(
+                {"error": "Only project admins and members can update work items"},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        request_serializer = IssueBulkUpdateSerializer(data=request.data)
+        if not request_serializer.is_valid():
+            return Response(request_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        work_item_ids = request_serializer.validated_data["work_item_ids"]
+        properties = request_serializer.validated_data["properties"]
+
+        issues = {
+            issue.id: issue
+            for issue in Issue.issue_objects.filter(workspace__slug=slug, project_id=project_id, pk__in=work_item_ids)
+        }
+        # Snapshot of every work item before it changes, for the activity log and webhooks
+        current_instances = dict(zip(work_item_ids, IssueSerializer(list(issues.values()), many=True).data))
+
+        project = Project.objects.get(pk=project_id)
+        data = {self.PROPERTY_FIELDS[key]: value for key, value in properties.items()}
+        requested_data = json.dumps(request.data["properties"], cls=DjangoJSONEncoder)
+
+        with transaction.atomic():
+            for work_item_id in work_item_ids:
+                issue = issues.get(work_item_id)
+                if issue is None:
+                    transaction.set_rollback(True)
+                    return Response(
+                        {"error": "Work item does not exist in this project", "work_item_ids": [str(work_item_id)]},
+                        status=status.HTTP_404_NOT_FOUND,
+                    )
+                current_instance = json.dumps(current_instances[work_item_id], cls=DjangoJSONEncoder)
+                serializer = IssueSerializer(
+                    issue,
+                    data=data,
+                    context={"project_id": project_id, "workspace_id": project.workspace_id},
+                    partial=True,
+                )
+                if not serializer.is_valid():
+                    transaction.set_rollback(True)
+                    return Response(
+                        {"work_item_id": str(work_item_id), "errors": serializer.errors},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+                serializer.save()
+                issue_activity.delay(
+                    type="issue.activity.updated",
+                    requested_data=requested_data,
+                    actor_id=str(request.user.id),
+                    issue_id=str(work_item_id),
+                    project_id=str(project_id),
+                    current_instance=current_instance,
+                    epoch=int(timezone.now().timestamp()),
+                    notification=True,
+                    origin=base_host(request=request, is_app=True),
+                )
+                model_activity.delay(
+                    model_name="issue",
+                    model_id=str(work_item_id),
+                    requested_data=request.data["properties"],
+                    current_instance=current_instance,
+                    actor_id=request.user.id,
+                    slug=slug,
+                    origin=base_host(request=request, is_app=True),
+                )
+
+        updated_issues = (
+            Issue.issue_objects.filter(pk__in=work_item_ids)
+            .annotate(
+                sub_issues_count=Issue.issue_objects.filter(parent=OuterRef("id"))
+                .order_by()
+                .annotate(count=Func(F("id"), function="Count"))
+                .values("count")
+            )
+            .select_related("project", "workspace", "state", "parent")
+            .prefetch_related("assignees", "labels")
+        )
+        ordered = sorted(updated_issues, key=lambda issue: work_item_ids.index(issue.id))
+        return Response(
+            {"results": IssueSerializer(ordered, many=True, fields=self.fields, expand=self.expand).data},
+            status=status.HTTP_200_OK,
+        )
 
 
 class LabelListCreateAPIEndpoint(BaseAPIView):

@@ -25,11 +25,14 @@ from django.db.models import (
     Subquery,
 )
 
+from django.db.models.functions import Greatest
 from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 from django.conf import settings
 
 # Third party imports
 from rest_framework import status
+from rest_framework.exceptions import ParseError
 from rest_framework.response import Response
 
 # drf-spectacular imports
@@ -38,7 +41,9 @@ from drf_spectacular.utils import (
     OpenApiResponse,
     OpenApiExample,
     OpenApiRequest,
+    OpenApiParameter,
 )
+from drf_spectacular.types import OpenApiTypes
 
 # Module imports
 from plane.api.serializers import (
@@ -78,7 +83,9 @@ from plane.db.models import (
     CycleIssue,
     Workspace,
 )
+from plane.db.models.state import StateGroup
 from plane.settings.storage import S3Storage
+from plane.utils.paginator import ChangesFeedPaginator
 from plane.utils.path_validator import sanitize_filename
 from plane.utils.order_queryset import (
     ACTIVITY_ORDER_BY_ALLOWLIST,
@@ -524,6 +531,110 @@ class IssueListCreateAPIEndpoint(BaseAPIView):
             )
             return Response(serializer.data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class IssueChangesAPIEndpoint(BaseAPIView):
+    """
+    Changes feed of work items for incremental sync
+    """
+
+    model = Issue
+    permission_classes = [ProjectEntityPermission]
+    serializer_class = IssueSerializer
+    use_read_replica = True
+
+    def get_queryset(self):
+        # Same visibility as the list endpoint (no drafts, triage or archived
+        # projects), but archived and soft-deleted work items are kept because
+        # they are changes the client has to learn about. Soft deletes use
+        # queryset.update(), which leaves updated_at alone, so the change time is
+        # the later of updated_at and deleted_at.
+        return (
+            Issue.all_objects.filter(workspace__slug=self.kwargs.get("slug"))
+            .filter(
+                project__project_projectmember__member=self.request.user,
+                project__project_projectmember__is_active=True,
+            )
+            .exclude(state__group=StateGroup.TRIAGE.value)
+            .exclude(project__archived_at__isnull=False)
+            .exclude(is_draft=True)
+            .annotate(changed_at=Greatest("updated_at", "deleted_at"))
+            .select_related("project", "workspace", "state", "parent")
+            .prefetch_related("assignees", "labels")
+        )
+
+    @staticmethod
+    def parse_since(value):
+        if not value:
+            raise ParseError(detail="The since query parameter is required.")
+        value = value.strip()
+        # An unescaped "+" in a query string arrives as a space
+        if "T" in value and " " in value:
+            value = value[::-1].replace(" ", "+", 1)[::-1]
+        try:
+            since = parse_datetime(value)
+        except ValueError:
+            since = None
+        if since is None:
+            raise ParseError(detail="Invalid since parameter. Use an ISO 8601 timestamp.")
+        if timezone.is_naive(since):
+            since = timezone.make_aware(since)
+        return since
+
+    def serialize(self, rows):
+        live = [row for row in rows if row.deleted_at is None]
+        data = IssueSerializer(live, many=True, fields=self.fields, expand=self.expand).data
+        return [
+            {"id": str(row.id), "deleted_at": row.deleted_at} if row.deleted_at is not None else data[index]
+            for index, row in enumerate(rows)
+        ]
+
+    @work_item_docs(
+        operation_id="list_work_item_changes",
+        summary="List work item changes",
+        description="Retrieve work items created, updated, archived or deleted after a timestamp, oldest change first. Deleted work items are returned as an id and deleted_at only.",  # noqa: E501
+        parameters=[
+            OpenApiParameter(
+                name="since",
+                type=OpenApiTypes.DATETIME,
+                location=OpenApiParameter.QUERY,
+                description="ISO 8601 timestamp, with or without a UTC offset (no offset means UTC)",
+                required=True,
+            ),
+            CURSOR_PARAMETER,
+            PER_PAGE_PARAMETER,
+            FIELDS_PARAMETER,
+            EXPAND_PARAMETER,
+        ],
+        responses={
+            200: create_paginated_response(
+                IssueSerializer,
+                "PaginatedWorkItemChangesResponse",
+                "Paginated list of work item changes",
+                "Paginated Work Item Changes",
+            ),
+            400: INVALID_REQUEST_RESPONSE,
+            404: PROJECT_NOT_FOUND_RESPONSE,
+        },
+    )
+    def get(self, request, slug, project_id):
+        """List work item changes
+
+        Retrieve work items created, updated, archived or deleted after the given
+        timestamp, oldest change first.
+        """
+        since = self.parse_since(request.GET.get("since"))
+        queryset = self.get_queryset()
+
+        return self.paginate(
+            request=request,
+            paginator_cls=ChangesFeedPaginator,
+            queryset=queryset,
+            since=since,
+            has_cursor=bool(request.GET.get(self.cursor_name)),
+            total_count_queryset=queryset.filter(changed_at__gt=since),
+            on_results=self.serialize,
+        )
 
 
 class IssueDetailAPIEndpoint(BaseAPIView):

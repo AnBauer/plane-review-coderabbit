@@ -5,6 +5,7 @@
 # Python imports
 import math
 from collections import defaultdict
+from datetime import datetime, timedelta, timezone as dt_timezone
 from collections.abc import Sequence
 
 # Django imports
@@ -190,6 +191,100 @@ class OffsetPaginator:
 
     def process_results(self, results):
         raise NotImplementedError
+
+
+class ChangesFeedPaginator:
+    """
+    Keyset paginator for change feeds, ordered by (timestamp, id) ascending.
+
+    The cursor is `value:offset:0` where `value` is the timestamp of the last
+    returned row in integer microseconds since the epoch and `offset` is the
+    number of rows already returned that share exactly that timestamp. Unlike a
+    plain page offset it stays stable when rows are written between requests,
+    so a client following every `next_cursor` sees each change exactly once.
+
+    The queryset must annotate `timestamp_field` with the change timestamp.
+    """
+
+    EPOCH = datetime(1970, 1, 1, tzinfo=dt_timezone.utc)
+    MICROSECOND = timedelta(microseconds=1)
+
+    def __init__(
+        self,
+        queryset,
+        since,
+        timestamp_field="changed_at",
+        has_cursor=False,
+        max_limit=MAX_LIMIT,
+        total_count_queryset=None,
+    ):
+        self.queryset = queryset
+        self.since = since
+        self.timestamp_field = timestamp_field
+        self.has_cursor = has_cursor
+        self.max_limit = max_limit
+        self.total_count_queryset = total_count_queryset
+
+    @classmethod
+    def to_micros(cls, value):
+        return (value - cls.EPOCH) // cls.MICROSECOND
+
+    @classmethod
+    def from_micros(cls, value):
+        return cls.EPOCH + timedelta(microseconds=value)
+
+    def get_result(self, limit=1000, cursor=None):
+        limit = min(limit, self.max_limit)
+        field = self.timestamp_field
+
+        if self.has_cursor and cursor is not None:
+            if cursor.is_prev or cursor.offset < 0:
+                raise BadPaginationError("Invalid changes cursor")
+            # Rows sharing the cursor timestamp sort first, so skipping
+            # `offset` rows skips exactly the ones already returned.
+            try:
+                cursor_time = self.from_micros(cursor.value)
+            except (OverflowError, ValueError):
+                raise BadPaginationError("Invalid changes cursor")
+            queryset = self.queryset.filter(**{f"{field}__gte": cursor_time})
+            offset = cursor.offset
+            last_value, last_offset = cursor.value, cursor.offset
+        else:
+            queryset = self.queryset.filter(**{f"{field}__gt": self.since})
+            offset = 0
+            last_value, last_offset = None, 0
+
+        queryset = queryset.order_by(field, "id")
+        rows = list(queryset[offset : offset + limit + 1])
+        has_next = len(rows) > limit
+        rows = rows[:limit]
+
+        if rows:
+            last_value_new = self.to_micros(getattr(rows[-1], field))
+            tied = sum(1 for row in rows if self.to_micros(getattr(row, field)) == last_value_new)
+            # All rows tied with the previous cursor, so the skipped ones still count
+            next_offset = tied + last_offset if last_value_new == last_value else tied
+            next_cursor = Cursor(last_value_new, next_offset, False, has_next)
+        else:
+            # Nothing new: hand back the same position so the client can poll again
+            next_cursor = Cursor(
+                # `since` is exclusive, the cursor is inclusive
+                last_value if last_value is not None else self.to_micros(self.since) + 1,
+                last_offset,
+                False,
+                False,
+            )
+        prev_cursor = Cursor(0, 0, True, False)
+
+        total_count = (self.total_count_queryset if self.total_count_queryset is not None else queryset).count()
+
+        return CursorResult(
+            results=rows,
+            next=next_cursor,
+            prev=prev_cursor,
+            hits=total_count,
+            max_hits=math.ceil(total_count / limit),
+        )
 
 
 class GroupedOffsetPaginator(OffsetPaginator):

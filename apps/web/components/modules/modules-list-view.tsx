@@ -23,6 +23,7 @@ import { useCommandPalette } from "@/hooks/store/use-command-palette";
 import { useModule } from "@/hooks/store/use-module";
 import { useModuleFilter } from "@/hooks/store/use-module-filter";
 import { useUserPermissions } from "@/hooks/store/user";
+import { MODULE_STATUS_SEARCH_PARAM, parseModuleStatuses } from "@/hooks/use-module-status-filter";
 
 export const ModulesListView = observer(function ModulesListView() {
   // router
@@ -33,12 +34,17 @@ export const ModulesListView = observer(function ModulesListView() {
   const { t } = useTranslation();
   // store hooks
   const { toggleCreateModuleModal } = useCommandPalette();
-  const { getProjectModuleIds, getFilteredModuleIds, loader } = useModule();
+  const { getProjectModuleIds, getFilteredModuleIds, getModuleById, loader } = useModule();
   const { currentProjectDisplayFilters: displayFilters } = useModuleFilter();
   const { allowPermissions } = useUserPermissions();
   // derived values
   const projectModuleIds = projectId ? getProjectModuleIds(projectId.toString()) : undefined;
-  const filteredModuleIds = projectId ? getFilteredModuleIds(projectId.toString()) : undefined;
+  const activeStatuses = parseModuleStatuses(searchParams.get(MODULE_STATUS_SEARCH_PARAM));
+  const filteredModuleIds = (projectId ? getFilteredModuleIds(projectId.toString()) : undefined)?.filter((moduleId) => {
+    if (activeStatuses.length === 0) return true;
+    const status = getModuleById(moduleId)?.status;
+    return !!status && activeStatuses.includes(status);
+  });
   const canPerformEmptyStateActions = allowPermissions(
     [EUserProjectRoles.ADMIN, EUserProjectRoles.MEMBER],
     EUserPermissionsLevel.PROJECT

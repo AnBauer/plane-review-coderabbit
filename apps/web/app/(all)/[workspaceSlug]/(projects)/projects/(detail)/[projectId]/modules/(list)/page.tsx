@@ -20,6 +20,7 @@ import lightModulesAsset from "@/app/assets/empty-state/disabled-feature/modules
 import { PageHead } from "@/components/core/page-title";
 import { DetailedEmptyState } from "@/components/empty-state/detailed-empty-state-root";
 import { ModuleAppliedFiltersList, ModulesListView } from "@/components/modules";
+import { ModuleStatusFilterChips } from "@/components/modules/module-status-filter-chips";
 // hooks
 import { useModuleFilter } from "@/hooks/store/use-module-filter";
 import { useProject } from "@/hooks/store/use-project";
@@ -96,6 +97,7 @@ function ProjectModulesPage({ params }: Route.ComponentProps) {
             alwaysAllowEditing
           />
         )}
+        <ModuleStatusFilterChips />
         <ModulesListView />
       </div>
     </>

@@ -4,7 +4,8 @@
  * See the LICENSE file for details.
  */
 
-import { useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { debounce } from "lodash-es";
 import { observer } from "mobx-react";
 import { useForm, Controller } from "react-hook-form";
 // plane imports
@@ -16,6 +17,7 @@ import { cn, isCommentEmpty } from "@plane/utils";
 import { LiteTextEditor } from "@/components/editor/lite-text";
 // hooks
 import { useWorkspace } from "@/hooks/store/use-workspace";
+import { EMPTY_COMMENT_HTML, useCommentDraft } from "@/hooks/use-comment-draft";
 // services
 import { FileService } from "@/services/file.service";
 
@@ -48,6 +50,8 @@ export const CommentCreate = observer(function CommentCreate(props: TCommentCrea
   const workspaceStore = useWorkspace();
   // derived values
   const workspaceId = workspaceStore.getWorkspaceBySlug(workspaceSlug)?.id as string;
+  const { getDraft, saveDraft, clearDraft } = useCommentDraft(workspaceSlug, entityId);
+  const debouncedSaveDraft = useMemo(() => debounce(saveDraft, 300), [saveDraft]);
   // form info
   const {
     handleSubmit,
@@ -57,13 +61,17 @@ export const CommentCreate = observer(function CommentCreate(props: TCommentCrea
     reset,
   } = useForm<Partial<TIssueComment>>({
     defaultValues: {
-      comment_html: "<p></p>",
+      comment_html: getDraft() ?? EMPTY_COMMENT_HTML,
     },
   });
+
+  // write a pending draft when the comment box unmounts
+  useEffect(() => () => debouncedSaveDraft.flush(), [debouncedSaveDraft]);
 
   const onSubmit = async (formData: Partial<TIssueComment>) => {
     try {
       const comment = await activityOperations.createComment(formData);
+      clearDraft();
       if (comment?.id) onSubmitCallback?.(comment.id);
       if (uploadedAssetIds.length > 0) {
         if (projectId) {
@@ -80,9 +88,7 @@ export const CommentCreate = observer(function CommentCreate(props: TCommentCrea
     } catch (error) {
       console.error(error);
     } finally {
-      reset({
-        comment_html: "<p></p>",
-      });
+      reset();
       editorRef.current?.clearEditor();
     }
   };
@@ -129,7 +135,10 @@ export const CommentCreate = observer(function CommentCreate(props: TCommentCrea
                 ref={editorRef}
                 initialValue={value ?? "<p></p>"}
                 containerClassName="min-h-min"
-                onChange={(comment_json, comment_html) => onChange(comment_html)}
+                onChange={(comment_json, comment_html) => {
+                  onChange(comment_html);
+                  debouncedSaveDraft(comment_html);
+                }}
                 accessSpecifier={accessValue ?? EIssueCommentAccessSpecifier.INTERNAL}
                 handleAccessChange={onAccessChange}
                 isSubmitting={isSubmitting}

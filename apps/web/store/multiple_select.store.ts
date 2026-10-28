@@ -32,6 +32,9 @@ export type IMultipleSelectStore = {
   updateNextActiveEntity: (entityDetails: TEntityDetails | null) => void;
   updateActiveEntityDetails: (entityDetails: TEntityDetails | null) => void;
   clearSelection: () => void;
+  // bulk actions
+  getSelectionStatus: (entityIDs: string[]) => "empty" | "partial" | "complete";
+  applyBulkUpdate: <T>(data: T, updateEntity: (entityID: string, data: T) => Promise<unknown>) => Promise<string[]>;
 };
 
 /**
@@ -134,14 +137,25 @@ export class MultipleSelectStore implements IMultipleSelectStore {
       this.selectedEntityDetails.find((en) => en.entityID === entityID) ?? null
   );
 
+  /**
+   * @description returns how many of the given entities are selected
+   * @param {string[]} entityIDs
+   * @returns {"empty" | "partial" | "complete"} "empty" when the list is empty or nothing is selected
+   */
+  getSelectionStatus = computedFn((entityIDs: string[]): "empty" | "partial" | "complete" => {
+    const totalSelected = entityIDs.filter((id) => this.getIsEntitySelected(id)).length;
+    if (totalSelected === 0) return "empty";
+    return totalSelected === entityIDs.length ? "complete" : "partial";
+  });
+
   // entity actions
   /**
    * @description add or remove entities
    * @param {TEntityDetails} entityDetails
-   * @param {"add" | "remove"} action
+   * @param {"add" | "remove"} operation
    */
-  updateSelectedEntityDetails = (entityDetails: TEntityDetails, action: "add" | "remove") => {
-    if (action === "add") {
+  updateSelectedEntityDetails = (entityDetails: TEntityDetails, operation: "add" | "remove") => {
+    if (operation === "add") {
       runInAction(() => {
         if (this.getIsEntitySelected(entityDetails.entityID)) {
           remove(this.selectedEntityDetails, (en) => en.entityID === entityDetails.entityID);
@@ -162,10 +176,10 @@ export class MultipleSelectStore implements IMultipleSelectStore {
   /**
    * @description add or remove multiple entities
    * @param {TEntityDetails[]} entitiesList
-   * @param {"add" | "remove"} action
+   * @param {"add" | "remove"} operation
    */
-  bulkUpdateSelectedEntityDetails = (entitiesList: TEntityDetails[], action: "add" | "remove") => {
-    if (action === "add") {
+  bulkUpdateSelectedEntityDetails = (entitiesList: TEntityDetails[], operation: "add" | "remove") => {
+    if (operation === "add") {
       runInAction(() => {
         let newEntities: TEntityDetails[] = [];
         newEntities = differenceWith(this.selectedEntityDetails, entitiesList, isEqual);
@@ -221,6 +235,20 @@ export class MultipleSelectStore implements IMultipleSelectStore {
     runInAction(() => {
       this.activeEntityDetails = entityDetails;
     });
+  };
+
+  /**
+   * @description apply the same update to every selected entity and clear the selection. The selection is cleared
+   * before the updates settle, as the updates are applied optimistically by the caller's update function.
+   * @param {T} data
+   * @param {(entityID: string, data: T) => Promise<unknown>} updateEntity
+   * @returns {Promise<string[]>} ids of the entities whose update failed
+   */
+  applyBulkUpdate = async <T>(data: T, updateEntity: (entityID: string, data: T) => Promise<unknown>) => {
+    const entityIDs = [...this.selectedEntityIds];
+    this.clearSelection();
+    const results = await Promise.allSettled(entityIDs.map(async (entityID) => updateEntity(entityID, data)));
+    return entityIDs.filter((_, index) => results[index].status === "rejected");
   };
 
   /**

@@ -4,4 +4,5 @@
  * See the LICENSE file for details.
  */
 
+export * from "./list-change-bar";
 export * from "./root";

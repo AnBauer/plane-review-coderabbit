@@ -332,6 +332,13 @@
     "upgrade_banner": {
       "message": "Change state, priority, and more for several work items at once. Save three minutes on an average per operation.",
       "cta": "Upgrade to One"
+    },
+    "select_all": "Select all work items",
+    "selected_count": "{count} selected",
+    "clear_selection": "Clear selection",
+    "update_failed": {
+      "title": "Unable to update work items",
+      "message": "{count} work items could not be updated."
     }
   },
   "recurring_work_items": {

@@ -33,6 +33,8 @@ export type TSelectionHelper = {
   getIsEntityActive: (entityID: string) => boolean;
   handleGroupClick: (groupID: string) => void;
   isGroupSelected: (groupID: string) => "empty" | "partial" | "complete";
+  handleSelectAllClick: () => void;
+  isAllSelected: () => "empty" | "partial" | "complete";
   isSelectionDisabled: boolean;
 };
 
@@ -56,6 +58,7 @@ export const useMultipleSelect = (props: Props) => {
     getIsEntitySelected,
     getIsEntityActive,
     getEntityDetailsFromEntityID,
+    getSelectionStatus,
   } = useMultipleSelectStore();
 
   useReloadConfirmations(
@@ -285,6 +288,23 @@ export const useMultipleSelect = (props: Props) => {
     [disabled, entitiesList, handleEntitySelection, isGroupSelected]
   );
 
+  /**
+   * @description check if all the entities, across all groups, are selected
+   */
+  const isAllSelected = useCallback(
+    () => getSelectionStatus(entitiesList.map((entity) => entity.entityID)),
+    [entitiesList, getSelectionStatus]
+  );
+
+  /**
+   * @description select all the entities, or clear the selection if all of them are already selected
+   */
+  const handleSelectAllClick = useCallback(() => {
+    if (disabled) return;
+
+    handleEntitySelection(entitiesList, false, isAllSelected() === "complete" ? "force-remove" : "force-add");
+  }, [disabled, entitiesList, handleEntitySelection, isAllSelected]);
+
   // select entities on shift + arrow up/down key press
   useEffect(() => {
     if (disabled) return;
@@ -392,6 +412,8 @@ export const useMultipleSelect = (props: Props) => {
       getIsEntityActive,
       handleGroupClick,
       isGroupSelected,
+      handleSelectAllClick,
+      isAllSelected,
       isSelectionDisabled: disabled,
     }),
     [
@@ -401,6 +423,8 @@ export const useMultipleSelect = (props: Props) => {
       getIsEntitySelected,
       handleEntityClick,
       handleGroupClick,
+      handleSelectAllClick,
+      isAllSelected,
       isGroupSelected,
     ]
   );

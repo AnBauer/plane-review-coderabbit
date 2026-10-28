@@ -8,6 +8,7 @@ import { useEffect, useRef } from "react";
 import { combine } from "@atlaskit/pragmatic-drag-and-drop/combine";
 import { autoScrollForElements } from "@atlaskit/pragmatic-drag-and-drop-auto-scroll/element";
 import { observer } from "mobx-react";
+import { useParams } from "next/navigation";
 // plane constants
 import { ALL_ISSUES } from "@plane/constants";
 // types
@@ -24,17 +25,16 @@ import type {
 } from "@plane/types";
 // components
 import { MultipleSelectGroup } from "@/components/core/multiple-select";
+import { IssueListChangeBar } from "@/components/issues/bulk-operations";
 // hooks
+import { useMultipleSelectStore } from "@/hooks/store/use-multiple-select-store";
 import { useIssueStoreType } from "@/hooks/use-issue-layout-store";
-// plane web components
-import { IssueBulkOperationsRoot } from "@/components/issues/bulk-operations";
-// plane web hooks
-import { useBulkOperationStatus } from "@/hooks/use-bulk-operation-status";
 // utils
 import type { GroupDropLocation } from "../utils";
 import { getGroupByColumns, isWorkspaceLevel, isSubGrouped } from "../utils";
 import { ListGroup } from "./list-group";
 import type { TRenderQuickActions } from "./list-view-types";
+import { ListSelectAllHeader } from "./select-all-header";
 
 export interface IList {
   groupedIssueIds: TGroupedIssues;
@@ -82,10 +82,18 @@ export const List = observer(function List(props: IList) {
   } = props;
 
   const storeType = useIssueStoreType();
-  // plane web hooks
-  const isBulkOperationsEnabled = useBulkOperationStatus();
+  // router
+  const { projectId: routerProjectId } = useParams();
+  const projectId = routerProjectId?.toString();
+  // store hooks
+  const { clearSelection } = useMultipleSelectStore();
 
   const containerRef = useRef<HTMLDivElement | null>(null);
+
+  // clear the selection when the user leaves the project
+  useEffect(() => {
+    clearSelection();
+  }, [projectId, clearSelection]);
 
   const groups = getGroupByColumns({
     groupBy: group_by as GroupByColumnTypes,
@@ -111,7 +119,7 @@ export const List = observer(function List(props: IList) {
 
   const getGroupIndex = (groupId: string | undefined) => groups.findIndex(({ id }) => id === groupId);
 
-  const is_list = group_by === null ? true : false;
+  const is_list = group_by === null;
 
   // create groupIds array and entities object for bulk ops
   const groupIds = groups.map((g) => g.id);
@@ -128,16 +136,27 @@ export const List = observer(function List(props: IList) {
   } else {
     entities = orderedGroups;
   }
+  // only work items of the current project that the user can edit are selectable
+  const selectableEntities = Object.fromEntries(
+    Object.entries(entities).map(([groupId, issueIds]) => [
+      groupId,
+      issueIds.filter((issueId) => {
+        const issueProjectId = issuesMap[issueId]?.project_id;
+        return !!issueProjectId && issueProjectId === projectId && canEditProperties(issueProjectId);
+      }),
+    ])
+  );
   return (
     <div className="relative flex size-full flex-col">
       {groups && (
         <MultipleSelectGroup
           containerRef={containerRef}
-          entities={entities}
-          disabled={!isBulkOperationsEnabled || isEpic}
+          entities={selectableEntities}
+          disabled={isEpic || isCompletedCycle || !projectId}
         >
           {(helpers) => (
             <>
+              <ListSelectAllHeader selectionHelpers={helpers} />
               <div
                 ref={containerRef}
                 className="vertical-scrollbar relative scrollbar-lg size-full overflow-auto bg-surface-1"
@@ -172,7 +191,7 @@ export const List = observer(function List(props: IList) {
                 ))}
               </div>
 
-              <IssueBulkOperationsRoot selectionHelpers={helpers} />
+              <IssueListChangeBar selectionHelpers={helpers} updateIssue={updateIssue} />
             </>
           )}
         </MultipleSelectGroup>

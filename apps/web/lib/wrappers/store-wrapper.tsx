@@ -7,7 +7,7 @@
 import type { ReactNode } from "react";
 import { useEffect, useRef } from "react";
 import { observer } from "mobx-react";
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import { useTheme } from "next-themes";
 // helpers
 import { applyCustomTheme, clearCustomTheme } from "@plane/utils";
@@ -26,8 +26,10 @@ function StoreWrapper(props: TStoreWrapper) {
   const { setTheme } = useTheme();
   // router
   const params = useParams();
+  const searchParams = useSearchParams();
+  const search = searchParams.toString();
   // store hooks
-  const { setQuery } = useRouterParams();
+  const { setQuery, setSearchParams } = useRouterParams();
   const { sidebarCollapsed, toggleSidebar } = useAppTheme();
   const { data: userProfile } = useUserProfile();
   // Track if we've initialized theme from server (one-time only)
@@ -107,6 +109,10 @@ function StoreWrapper(props: TStoreWrapper) {
     if (!params) return;
     setQuery(params);
   }, [params, setQuery]);
+
+  useEffect(() => {
+    setSearchParams(Object.fromEntries(new URLSearchParams(search)));
+  }, [search, setSearchParams]);
 
   return <>{children}</>;
 }

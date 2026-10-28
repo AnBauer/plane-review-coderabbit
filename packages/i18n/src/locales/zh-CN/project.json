@@ -25,6 +25,7 @@
     },
     "date_range": "日期范围",
     "add_date": "添加日期",
+    "filters_saved": "筛选器已保存",
     "active_cycle": {
       "label": "活动周期",
       "progress": "进度",

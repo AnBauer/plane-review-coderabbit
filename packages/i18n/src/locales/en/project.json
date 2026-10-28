@@ -25,6 +25,7 @@
     },
     "date_range": "Date range",
     "add_date": "Add date",
+    "filters_saved": "Filters saved",
     "active_cycle": {
       "label": "Active cycle",
       "progress": "Progress",

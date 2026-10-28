@@ -19,6 +19,7 @@ import { FiltersDropdown } from "@/components/issues/issue-layouts/filters";
 // hooks
 import { useCycleFilter } from "@/hooks/store/use-cycle-filter";
 // local imports
+import { CycleFiltersSavedIndicator } from "./cycle-filters-saved-indicator";
 import { CycleFiltersSelection } from "./dropdowns";
 
 type Props = {
@@ -33,7 +34,7 @@ export const CyclesViewHeader = observer(function CyclesViewHeader(props: Props)
   const { currentProjectFilters, searchQuery, updateFilters, updateSearchQuery } = useCycleFilter();
   const { t } = useTranslation();
   // states
-  const [isSearchOpen, setIsSearchOpen] = useState(searchQuery !== "" ? true : false);
+  const [isSearchOpen, setIsSearchOpen] = useState(searchQuery !== "");
   // outside click detector hook
   useOutsideClickDetector(inputRef, () => {
     if (isSearchOpen && searchQuery.trim() === "") setIsSearchOpen(false);
@@ -129,6 +130,7 @@ export const CyclesViewHeader = observer(function CyclesViewHeader(props: Props)
       >
         <CycleFiltersSelection filters={currentProjectFilters ?? {}} handleFiltersUpdate={handleFilters} />
       </FiltersDropdown>
+      <CycleFiltersSavedIndicator projectId={projectId} />
     </div>
   );
 });

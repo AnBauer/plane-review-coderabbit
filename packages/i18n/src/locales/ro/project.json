@@ -25,6 +25,7 @@
     },
     "date_range": "Interval de date",
     "add_date": "Adaugă data",
+    "filters_saved": "Filtre salvate",
     "active_cycle": {
       "label": "Ciclu activ",
       "progress": "Progres",

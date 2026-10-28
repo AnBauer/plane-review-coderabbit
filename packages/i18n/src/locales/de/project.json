@@ -25,6 +25,7 @@
     },
     "date_range": "Datumsbereich",
     "add_date": "Datum hinzufügen",
+    "filters_saved": "Filter gespeichert",
     "active_cycle": {
       "label": "Aktiver Zyklus",
       "progress": "Fortschritt",

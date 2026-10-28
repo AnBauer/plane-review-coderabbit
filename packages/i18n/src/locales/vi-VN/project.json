@@ -25,6 +25,7 @@
     },
     "date_range": "Khoảng thời gian",
     "add_date": "Thêm ngày",
+    "filters_saved": "Đã lưu bộ lọc",
     "active_cycle": {
       "label": "Chu kỳ hoạt động",
       "progress": "Tiến độ",

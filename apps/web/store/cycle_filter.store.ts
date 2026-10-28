@@ -4,18 +4,38 @@
  * See the LICENSE file for details.
  */
 
-import { set } from "lodash-es";
-import { action, computed, observable, makeObservable, runInAction, reaction } from "mobx";
+import { isEqual, set } from "lodash-es";
+import { action, computed, observable, makeObservable, runInAction, reaction, toJS, when } from "mobx";
 import { computedFn } from "mobx-utils";
-// types
+// plane imports
+import { CYCLE_STATUS } from "@plane/constants";
 import type { TCycleDisplayFilters, TCycleFilters, TCycleFiltersByState } from "@plane/types";
+// local storage
+import { storage } from "@/lib/local-storage";
 // store
 import type { CoreRootStore } from "./root.store";
+
+export const CYCLE_STATUS_SEARCH_PARAM = "cycle_status";
+
+export const cycleFiltersStorageKey = (userId: string) => `cycle_filters:${userId}`;
+
+const CYCLE_STATUS_VALUES = new Set<string>(CYCLE_STATUS.map((status) => status.value));
+
+const getStoredFilters = (userId: string): Record<string, TCycleFilters> => {
+  const value = storage.get(cycleFiltersStorageKey(userId));
+  if (!value) return {};
+  try {
+    return JSON.parse(value) as Record<string, TCycleFilters>;
+  } catch {
+    return {};
+  }
+};
 
 export interface ICycleFilterStore {
   // observables
   displayFilters: Record<string, TCycleDisplayFilters>;
   filters: Record<string, TCycleFiltersByState>;
+  savedFilters: Record<string, TCycleFilters>;
   searchQuery: string;
   archivedCyclesSearchQuery: string;
   // computed
@@ -26,18 +46,23 @@ export interface ICycleFilterStore {
   getDisplayFiltersByProjectId: (projectId: string) => TCycleDisplayFilters | undefined;
   getFiltersByProjectId: (projectId: string) => TCycleFilters | undefined;
   getArchivedFiltersByProjectId: (projectId: string) => TCycleFilters | undefined;
+  isProjectFilterSaved: (projectId: string) => boolean;
   // actions
   updateDisplayFilters: (projectId: string, displayFilters: TCycleDisplayFilters) => void;
   updateFilters: (projectId: string, filters: TCycleFilters, state?: keyof TCycleFiltersByState) => void;
   updateSearchQuery: (query: string) => void;
   updateArchivedCyclesSearchQuery: (query: string) => void;
   clearAllFilters: (projectId: string, state?: keyof TCycleFiltersByState) => void;
+  hydrateProjectFilters: (projectId: string) => Promise<void>;
+  applyUrlFilters: () => void;
+  saveFilters: () => void;
 }
 
 export class CycleFilterStore implements ICycleFilterStore {
   // observables
   displayFilters: Record<string, TCycleDisplayFilters> = {};
   filters: Record<string, TCycleFiltersByState> = {};
+  savedFilters: Record<string, TCycleFilters> = {};
   searchQuery: string = "";
   archivedCyclesSearchQuery: string = "";
   // root store
@@ -48,6 +73,7 @@ export class CycleFilterStore implements ICycleFilterStore {
       // observables
       displayFilters: observable,
       filters: observable,
+      savedFilters: observable,
       searchQuery: observable.ref,
       archivedCyclesSearchQuery: observable.ref,
       // computed
@@ -70,7 +96,18 @@ export class CycleFilterStore implements ICycleFilterStore {
         if (!projectId) return;
         this.initProjectCycleFilters(projectId);
         this.searchQuery = "";
+        void this.hydrateProjectFilters(projectId);
       }
+    );
+    // apply filters shared through the url
+    when(
+      () => Boolean(this.rootStore.router.searchParams[CYCLE_STATUS_SEARCH_PARAM]),
+      () => this.applyUrlFilters()
+    );
+    // save filters of the current project
+    reaction(
+      () => this.filters,
+      () => this.saveFilters()
     );
   }
 
@@ -120,6 +157,16 @@ export class CycleFilterStore implements ICycleFilterStore {
   getArchivedFiltersByProjectId = computedFn((projectId: string) => this.filters[projectId].archived);
 
   /**
+   * @description check if the filters of a project match the saved filters
+   * @param {string} projectId
+   */
+  isProjectFilterSaved = computedFn((projectId: string) => {
+    const savedFilters = this.savedFilters[projectId];
+    if (!savedFilters) return false;
+    return isEqual(toJS(this.filters[projectId]?.default ?? {}), toJS(savedFilters));
+  });
+
+  /**
    * @description initialize display filters and filters of a project
    * @param {string} projectId
    */
@@ -134,6 +181,49 @@ export class CycleFilterStore implements ICycleFilterStore {
         default: {},
         archived: {},
       };
+    });
+  };
+
+  /**
+   * @description restore the saved filters of a project for the current user
+   * @param {string} projectId
+   */
+  hydrateProjectFilters = async (projectId: string) => {
+    const current = { ...this.filters[projectId]?.default };
+    await when(() => !!this.rootStore.user.data?.id);
+    const userId = this.rootStore.user.data?.id;
+    if (!userId) return;
+    const stored = getStoredFilters(userId)[projectId];
+    if (!stored) return;
+    this.filters[projectId] = { ...this.filters[projectId], default: { ...current, ...stored } };
+    runInAction(() => {
+      this.savedFilters[projectId] = stored;
+    });
+  };
+
+  /**
+   * @description apply the status filter from the url to the current project
+   */
+  applyUrlFilters = () => {
+    const projectId = this.rootStore.router.projectId;
+    const value = this.rootStore.router.searchParams[CYCLE_STATUS_SEARCH_PARAM];
+    if (!projectId || !value) return;
+    const status = value.split(",").filter((item) => CYCLE_STATUS_VALUES.has(item));
+    if (status.length === 0) return;
+    this.updateFilters(projectId, { status });
+  };
+
+  /**
+   * @description save the filters of the current project for the current user
+   */
+  saveFilters = () => {
+    const projectId = this.rootStore.router.projectId;
+    const userId = this.rootStore.user.data?.id;
+    if (!projectId || !userId) return;
+    const projectFilters = toJS(this.filters[projectId]?.default ?? {});
+    storage.set(cycleFiltersStorageKey(userId), { ...getStoredFilters(userId), [projectId]: projectFilters });
+    runInAction(() => {
+      this.savedFilters[projectId] = projectFilters;
     });
   };
 

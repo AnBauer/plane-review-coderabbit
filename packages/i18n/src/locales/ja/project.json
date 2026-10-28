@@ -25,6 +25,7 @@
     },
     "date_range": "日付範囲",
     "add_date": "日付を追加",
+    "filters_saved": "フィルターを保存しました",
     "active_cycle": {
       "label": "アクティブなサイクル",
       "progress": "進捗",

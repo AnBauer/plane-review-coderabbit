@@ -25,6 +25,7 @@
     },
     "date_range": "Rentang tanggal",
     "add_date": "Tambah tanggal",
+    "filters_saved": "Filter disimpan",
     "active_cycle": {
       "label": "Siklus aktif",
       "progress": "Kemajuan",

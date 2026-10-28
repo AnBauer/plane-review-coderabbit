@@ -25,6 +25,7 @@
     },
     "date_range": "Диапазон дат",
     "add_date": "Добавить дату",
+    "filters_saved": "Фильтры сохранены",
     "active_cycle": {
       "label": "Активный цикл",
       "progress": "Прогресс",

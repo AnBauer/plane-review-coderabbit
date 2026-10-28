@@ -25,6 +25,7 @@
     },
     "date_range": "日期範圍",
     "add_date": "新增日期",
+    "filters_saved": "篩選器已儲存",
     "active_cycle": {
       "label": "使用中的週期",
       "progress": "進度",

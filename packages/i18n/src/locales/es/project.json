@@ -25,6 +25,7 @@
     },
     "date_range": "Rango de fechas",
     "add_date": "Agregar fecha",
+    "filters_saved": "Filtros guardados",
     "active_cycle": {
       "label": "Ciclo activo",
       "progress": "Progreso",

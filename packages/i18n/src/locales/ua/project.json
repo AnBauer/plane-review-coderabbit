@@ -25,6 +25,7 @@
     },
     "date_range": "Діапазон дат",
     "add_date": "Додати дату",
+    "filters_saved": "Фільтри збережено",
     "active_cycle": {
       "label": "Активний цикл",
       "progress": "Прогрес",

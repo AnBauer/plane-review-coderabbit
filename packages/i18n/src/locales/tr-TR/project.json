@@ -25,6 +25,7 @@
     },
     "date_range": "Tarih aralığı",
     "add_date": "Tarih ekle",
+    "filters_saved": "Filtreler kaydedildi",
     "active_cycle": {
       "label": "Aktif döngü",
       "progress": "İlerleme",

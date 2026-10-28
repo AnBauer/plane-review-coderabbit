@@ -25,6 +25,7 @@
     },
     "date_range": "Datumbereik",
     "add_date": "Datum toevoegen",
+    "filters_saved": "Filters opgeslagen",
     "active_cycle": {
       "label": "Actieve cyclus",
       "progress": "Voortgang",

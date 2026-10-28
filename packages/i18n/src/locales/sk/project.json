@@ -25,6 +25,7 @@
     },
     "date_range": "Dátumový rozsah",
     "add_date": "Pridať dátum",
+    "filters_saved": "Filtre uložené",
     "active_cycle": {
       "label": "Aktívny cyklus",
       "progress": "Pokrok",

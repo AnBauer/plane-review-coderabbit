@@ -25,6 +25,7 @@
     },
     "date_range": "날짜 범위",
     "add_date": "날짜 추가",
+    "filters_saved": "필터가 저장됨",
     "active_cycle": {
       "label": "활성 주기",
       "progress": "진행",

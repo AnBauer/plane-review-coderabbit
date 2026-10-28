@@ -11,8 +11,10 @@ import type { TProfileViews } from "@plane/types";
 export interface IRouterStore {
   // observables
   query: ParsedUrlQuery;
+  searchParams: Record<string, string>;
   // actions
   setQuery: (query: ParsedUrlQuery) => void;
+  setSearchParams: (params: Record<string, string>) => void;
   // computed
   workspaceSlug: string | undefined;
   teamspaceId: string | undefined;
@@ -33,13 +35,16 @@ export interface IRouterStore {
 export class RouterStore implements IRouterStore {
   // observables
   query: ParsedUrlQuery = {};
+  searchParams: Record<string, string> = {};
 
   constructor() {
     makeObservable(this, {
       // observables
       query: observable,
+      searchParams: observable.ref,
       // actions
       setQuery: action.bound,
+      setSearchParams: action.bound,
       //computed
       workspaceSlug: computed,
       teamspaceId: computed,
@@ -65,6 +70,16 @@ export class RouterStore implements IRouterStore {
   setQuery = (query: ParsedUrlQuery) => {
     runInAction(() => {
       this.query = query;
+    });
+  };
+
+  /**
+   * Sets the search params of the current url
+   * @param params
+   */
+  setSearchParams = (params: Record<string, string>) => {
+    runInAction(() => {
+      this.searchParams = params;
     });
   };
 
